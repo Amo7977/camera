@@ -1,26 +1,27 @@
+// server.js
 require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
-const fetch = require('node-fetch');
+const fetch = require('node-fetch'); // node-fetch v2 を使用
 
 const app = express();
-const upload = multer();
+const upload = multer({ storage: multer.memoryStorage() });
 
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-
 if (!WEBHOOK_URL) {
-    console.error('WEBHOOK_URL is not defined in .env');
+    console.error('WEBHOOK_URL is not defined in environment variables');
     process.exit(1);
 }
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static("public")); // フロントエンドの静的ファイル配信
 
-app.get('/', (req, res) => {
-    res.send('Server is running');
+app.get('/api', (req, res) => {
+    res.send('API Server is running');
 });
 
-app.post('/send-message', async (req, res) => {
+app.post('/api/send-message', async (req, res) => {
     try {
         const { message } = req.body;
         const response = await fetch(WEBHOOK_URL, {
@@ -40,7 +41,7 @@ app.post('/send-message', async (req, res) => {
     }
 });
 
-app.post('/send-image', upload.single('file'), async (req, res) => {
+app.post('/api/send-image', upload.single('file'), async (req, res) => {
     try {
         if (!req.file) {
             return res.status(400).send('No file uploaded');
@@ -70,17 +71,8 @@ app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
 
-module.exports = app;
-
-// vercel.json
-const fs = require('fs');
-fs.writeFileSync('vercel.json', JSON.stringify({
-    "version": 2,
-    "builds": [{ "src": "server.js", "use": "@vercel/node" }],
-    "routes": [{ "src": "/(.*)", "dest": "server.js" }]
-}, null, 2));
-
 // package.json
+const fs = require('fs');
 fs.writeFileSync('package.json', JSON.stringify({
     "name": "vercel-webhook-server",
     "version": "1.0.0",
@@ -96,3 +88,17 @@ fs.writeFileSync('package.json', JSON.stringify({
         "node-fetch": "^2.6.7"
     }
 }, null, 2));
+
+// vercel.json
+fs.writeFileSync('vercel.json', JSON.stringify({
+    "version": 2,
+    "builds": [
+        { "src": "server.js", "use": "@vercel/node" },
+        { "src": "public/index.html", "use": "@vercel/static" }
+    ],
+    "routes": [
+        { "src": "/api/(.*)", "dest": "server.js" },
+        { "src": "(.*)", "dest": "/public/index.html" }
+    ]
+}, null, 2));
+
