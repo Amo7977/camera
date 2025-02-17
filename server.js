@@ -1,15 +1,15 @@
+// server.js (修正後)
 require('dotenv').config();
 const express = require('express');
-const multer = require('multer');
 const fetch = require('node-fetch');
 const FormData = require('form-data');
 
 const app = express();
-const upload = multer({ storage: multer.memoryStorage() });
-
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-if (!WEBHOOK_URL) {
-    console.error('WEBHOOK_URL is not defined in environment variables');
+const IMGUR_CLIENT_ID = process.env.IMGUR_CLIENT_ID;
+
+if (!WEBHOOK_URL || !IMGUR_CLIENT_ID) {
+    console.error('環境変数 WEBHOOK_URL または IMGUR_CLIENT_ID が設定されていません');
     process.exit(1);
 }
 
@@ -24,12 +24,10 @@ app.get('/api', (req, res) => {
 app.post('/api/send-message', async (req, res) => {
     try {
         const { message } = req.body;
-        const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
-        
         const response = await fetch(WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: `IP: ${ip}\nMessage: ${message}` })
+            body: JSON.stringify({ content: message })
         });
         
         if (!response.ok) {
@@ -43,27 +41,31 @@ app.post('/api/send-message', async (req, res) => {
     }
 });
 
-app.post('/api/send-image', upload.single('file'), async (req, res) => {
+app.post('/api/send-image', async (req, res) => {
     try {
-        if (!req.file) {
-            return res.status(400).send('No file uploaded');
+        if (!req.body.image) {
+            return res.status(400).send('No image provided');
         }
-        
-        const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
         
         const formData = new FormData();
-        formData.append('file', req.file.buffer, { filename: 'image.png', contentType: req.file.mimetype });
-        formData.append('payload_json', JSON.stringify({ content: `IP: ${ip}` }));
+        formData.append('image', req.body.image);
         
-        const response = await fetch(WEBHOOK_URL, {
+        const imgurResponse = await fetch('https://api.imgur.com/3/image', {
             method: 'POST',
-            body: formData,
-            headers: formData.getHeaders()
+            headers: { 'Authorization': `Client-ID ${IMGUR_CLIENT_ID}` },
+            body: formData
         });
         
-        if (!response.ok) {
-            throw new Error(`Discord API error: ${response.statusText}`);
+        const imgurData = await imgurResponse.json();
+        if (!imgurData.success) {
+            throw new Error('Imgur upload failed');
         }
+        
+        await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: imgurData.data.link })
+        });
         
         res.status(200).send('Image sent');
     } catch (error) {
