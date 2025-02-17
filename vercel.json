@@ -8,7 +8,4 @@
         { "src": "/api/(.*)", "dest": "/api/$1" },
         { "src": "/(.*)", "dest": "/public/$1" }
     ],
-    "env": {
-        "WEBHOOK_URL": "@webhook-url"
-    }
 }
