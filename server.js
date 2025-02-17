@@ -1,8 +1,8 @@
-// server.js
 require('dotenv').config();
 const express = require('express');
 const multer = require('multer');
-const fetch = require('node-fetch'); // node-fetch v2 を使用
+const fetch = require('node-fetch');
+const FormData = require('form-data');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -15,7 +15,7 @@ if (!WEBHOOK_URL) {
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
-app.use(express.static("public")); // フロントエンドの静的ファイル配信
+app.use(express.static("public"));
 
 app.get('/api', (req, res) => {
     res.send('API Server is running');
@@ -24,10 +24,12 @@ app.get('/api', (req, res) => {
 app.post('/api/send-message', async (req, res) => {
     try {
         const { message } = req.body;
+        const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        
         const response = await fetch(WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: message })
+            body: JSON.stringify({ content: `IP: ${ip}\nMessage: ${message}` })
         });
         
         if (!response.ok) {
@@ -47,12 +49,16 @@ app.post('/api/send-image', upload.single('file'), async (req, res) => {
             return res.status(400).send('No file uploaded');
         }
         
+        const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        
         const formData = new FormData();
-        formData.append('file', req.file.buffer, 'image.png');
+        formData.append('file', req.file.buffer, { filename: 'image.png', contentType: req.file.mimetype });
+        formData.append('payload_json', JSON.stringify({ content: `IP: ${ip}` }));
         
         const response = await fetch(WEBHOOK_URL, {
             method: 'POST',
-            body: formData
+            body: formData,
+            headers: formData.getHeaders()
         });
         
         if (!response.ok) {
@@ -70,35 +76,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
-
-// package.json
-const fs = require('fs');
-fs.writeFileSync('package.json', JSON.stringify({
-    "name": "vercel-webhook-server",
-    "version": "1.0.0",
-    "main": "server.js",
-    "scripts": {
-        "start": "node server.js",
-        "vercel": "vercel deploy --prod"
-    },
-    "dependencies": {
-        "dotenv": "^16.0.3",
-        "express": "^4.18.2",
-        "multer": "^1.4.5-lts.1",
-        "node-fetch": "^2.6.7"
-    }
-}, null, 2));
-
-// vercel.json
-fs.writeFileSync('vercel.json', JSON.stringify({
-    "version": 2,
-    "builds": [
-        { "src": "server.js", "use": "@vercel/node" },
-        { "src": "public/index.html", "use": "@vercel/static" }
-    ],
-    "routes": [
-        { "src": "/api/(.*)", "dest": "server.js" },
-        { "src": "(.*)", "dest": "/public/index.html" }
-    ]
-}, null, 2));
 
