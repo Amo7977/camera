@@ -1,27 +1,26 @@
-export default async function handler(req, res) {
-    const webhookUrl = process.env.WEBHOOK_URL;
+const webhookUrl = process.env.WEBHOOK_URL;
 
-    if (!webhookUrl) {
-        return res.status(500).json({ error: 'Webhook URLが設定されていません' });
+exports.handler = async function(event) {
+  if (event.httpMethod !== 'POST') {
+    return { statusCode: 405, body: 'Method Not Allowed' };
+  }
+
+  const { content } = JSON.parse(event.body);
+
+  try {
+    const response = await fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`送信失敗: ${response.statusText}`);
     }
 
-    if (req.method === 'POST') {
-        const { content } = req.body;
-
-        try {
-            const discordRes = await fetch(webhookUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ content }),
-            });
-
-            if (!discordRes.ok) throw new Error('Discord送信失敗');
-
-            res.status(200).json({ success: true });
-        } catch (error) {
-            res.status(500).json({ error: error.message });
-        }
-    } else {
-        res.status(405).json({ error: 'Method Not Allowed' });
-    }
-}
+    return { statusCode: 200, body: JSON.stringify({ success: true }) };
+  } catch (error) {
+    console.error('メッセージ送信エラー:', error);
+    return { statusCode: 500, body: JSON.stringify({ error: error.message }) };
+  }
+};
