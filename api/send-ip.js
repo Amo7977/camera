@@ -11,14 +11,18 @@ export default async function handler(req, res) {
     }
 
     try {
-        await fetch(WEBHOOK_URL, {
+        const response = await fetch(WEBHOOK_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ content: `IPアドレス: ${ip}` }),
         });
 
+        if (!response.ok) {
+            throw new Error(`Webhook送信に失敗しました: ${response.statusText}`);
+        }
+
         return res.json({ message: 'IPアドレスが送信されました' });
     } catch (error) {
-        return res.status(500).json({ error: 'IPアドレス送信に失敗しました' });
+        return res.status(500).json({ error: `IPアドレス送信に失敗しました: ${error.message}` });
     }
 }
