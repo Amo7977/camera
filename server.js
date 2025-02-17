@@ -3,6 +3,7 @@ const express = require('express');
 const multer = require('multer');
 const fetch = require('node-fetch');
 const FormData = require('form-data');
+const fs = require('fs');
 
 const app = express();
 const upload = multer({ storage: multer.memoryStorage() });
@@ -52,7 +53,10 @@ app.post('/api/send-image', upload.single('file'), async (req, res) => {
         const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
         
         const formData = new FormData();
-        formData.append('file', req.file.buffer, { filename: 'image.png', contentType: req.file.mimetype });
+        formData.append('file', req.file.buffer, {
+            filename: 'image.png',
+            contentType: req.file.mimetype
+        });
         formData.append('payload_json', JSON.stringify({ content: `IP: ${ip}` }));
         
         const response = await fetch(WEBHOOK_URL, {
@@ -76,4 +80,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`Server is running on port ${PORT}`);
 });
-
