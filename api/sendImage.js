@@ -26,6 +26,7 @@ export default async function handler(req, res) {
 
             const file = files.file?.[0];
             if (!file) {
+                console.error('ファイルが見つからない:', files);
                 return res.status(400).json({ error: '画像ファイルが見つかりません' });
             }
 
@@ -34,6 +35,7 @@ export default async function handler(req, res) {
             try {
                 const formData = new FormData();
                 formData.append('file', fs.createReadStream(filePath), 'image.png');
+                formData.append('content', '画像送信テスト'); // Discord仕様対策！
 
                 const discordRes = await fetch(webhookUrl, {
                     method: 'POST',
@@ -42,6 +44,8 @@ export default async function handler(req, res) {
                 });
 
                 if (!discordRes.ok) {
+                    const errorBody = await discordRes.text();
+                    console.error('画像送信失敗:', discordRes.status, discordRes.statusText, errorBody);
                     throw new Error(`画像送信失敗: ${discordRes.statusText}`);
                 }
 
@@ -50,7 +54,7 @@ export default async function handler(req, res) {
                 console.error('画像送信エラー:', error);
                 res.status(500).json({ error: error.message });
             } finally {
-                fs.unlinkSync(filePath); // 一時ファイル削除
+                fs.unlinkSync(filePath);
             }
         });
     } else {
