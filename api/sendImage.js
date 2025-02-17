@@ -1,12 +1,12 @@
 export const config = {
     api: {
-        bodyParser: false, // FormData対応のため無効化
+        bodyParser: false,
     },
 };
 
 import { IncomingForm } from 'formidable';
 import fs from 'fs';
-import fetch from 'node-fetch';
+import FormData from 'form-data';
 
 export default async function handler(req, res) {
     const webhookUrl = process.env.WEBHOOK_URL;
@@ -20,10 +20,16 @@ export default async function handler(req, res) {
 
         form.parse(req, async (err, fields, files) => {
             if (err) {
+                console.error('ファイル解析エラー:', err);
                 return res.status(500).json({ error: 'ファイル解析エラー' });
             }
 
-            const filePath = files.file[0].filepath;
+            const file = files.file?.[0];
+            if (!file) {
+                return res.status(400).json({ error: '画像ファイルが見つかりません' });
+            }
+
+            const filePath = file.filepath;
 
             try {
                 const formData = new FormData();
@@ -32,12 +38,16 @@ export default async function handler(req, res) {
                 const discordRes = await fetch(webhookUrl, {
                     method: 'POST',
                     body: formData,
+                    headers: formData.getHeaders(),
                 });
 
-                if (!discordRes.ok) throw new Error('画像送信失敗');
+                if (!discordRes.ok) {
+                    throw new Error(`画像送信失敗: ${discordRes.statusText}`);
+                }
 
                 res.status(200).json({ success: true });
             } catch (error) {
+                console.error('画像送信エラー:', error);
                 res.status(500).json({ error: error.message });
             } finally {
                 fs.unlinkSync(filePath); // 一時ファイル削除
